@@ -1,0 +1,4 @@
+syntax: glob
+source/__history
+*.local
+*.identcache
