@@ -4,45 +4,65 @@ program CompressPath;
 {$R *.res}
 
 uses
+  Winapi.Windows,
+  Winapi.Messages,
   System.SysUtils,
   System.Classes,
-  System.Win.Registry,
-  Winapi.Windows,
-  Winapi.Messages;
+  System.IOUtils,
+  System.Win.Registry;
 
 type
   TPathCompressor = class
   private
     FOrgLength: Integer;
     FPath: TStringList;
+    FPathDelphi: string;
+    FPathMyDocs: string;
+    FPathProgramFiles: string;
+    FPathProgramFilesX86: string;
+    FPathSharedDocs: string;
     FRegistry: TRegistry;
     FShortcuts: TStringList;
     FVariables: TStringList;
   protected
+    procedure AddShortCut(const Key, Value: string);
+    procedure AddDelphiShortCut(const Key, RelExePath, RelDocPath: string); overload;
+    procedure AddOldDelphiShortCut(const Key, RelExePath, RelDocPath: string); overload;
+    function Compress(const Value: string): string;
+    function GetExistingPath(const Prefix, RelPath: string): string; overload;
+    function GetExistingPath(const Prefix: array of string; const RelPath: string): string; overload;
     procedure InitShortCuts;
     function ReadRegistry(const AName: string): string;
-    procedure WriteRegistry(const Name, Value: string);
-  public
-    constructor Create;
-    destructor Destroy; override;
-    function Compress(const Value: string): string;
-    procedure Execute(out OldLength, NewLength: Integer);
-    function LoadPath(UserEnvironment: Boolean): Boolean;
-    procedure NotifyChanges;
     function StorePath: Integer;
     procedure StoreVariables;
+    procedure WriteRegistry(const Name, Value: string);
     property OrgLength: Integer read FOrgLength;
     property Path: TStringList read FPath;
+    property PathDelphi: string read FPathDelphi;
+    property PathMyDocs: string read FPathMyDocs;
+    property PathProgramFiles: string read FPathProgramFiles;
+    property PathProgramFilesX86: string read FPathProgramFilesX86;
+    property PathSharedDocs: string read FPathSharedDocs;
     property Registry: TRegistry read FRegistry;
     property Shortcuts: TStringList read FShortcuts;
     property Variables: TStringList read FVariables;
+  public
+    constructor Create;
+    destructor Destroy; override;
+    procedure Execute(out OldLength, NewLength: Integer);
+    function LoadPath(UserEnvironment: Boolean): Boolean;
+    procedure LoadShortCuts(const AFileName: string);
+    procedure StoreShortCuts(const AFileName: string);
+    procedure NotifyChanges;
   end;
 
 constructor TPathCompressor.Create;
 begin
   inherited Create;
   FShortcuts := TStringList.Create;
-  FVariables := TStringList.Create();
+  FVariables := TStringList.Create;
+  FVariables.Sorted := true;
+  FVariables.Duplicates := dupIgnore;
   FPath := TStringList.Create;
   FPath.Delimiter := ';';
   FPath.StrictDelimiter := true;
@@ -51,6 +71,17 @@ begin
   {$ELSE}
   FRegistry := TRegistry.Create();
   {$ENDIF}
+  FPathMyDocs := TPath.GetDocumentsPath;
+  FPathSharedDocs := TPath.GetSharedDocumentsPath;
+  FPathProgramFilesX86 := GetEnvironmentVariable('ProgramFiles(x86)');
+  if FPathProgramFilesX86 = '' then begin
+    FPathProgramFiles := GetEnvironmentVariable('ProgramFiles');
+    FPathDelphi := FPathProgramFiles;
+  end
+  else begin
+    FPathProgramFiles := GetEnvironmentVariable('ProgramW6432');
+    FPathDelphi := FPathProgramFilesX86;
+  end;
   InitShortCuts;
 end;
 
@@ -61,6 +92,25 @@ begin
   FVariables.Free;
   FShortcuts.Free;
   inherited Destroy;
+end;
+
+procedure TPathCompressor.AddShortCut(const Key, Value: string);
+begin
+  if Value > '' then begin
+    Shortcuts.Values[Key] := Value;
+  end;
+end;
+
+procedure TPathCompressor.AddDelphiShortCut(const Key, RelExePath, RelDocPath: string);
+begin
+  AddShortCut(Key, GetExistingPath(PathDelphi, RelExePath));
+  AddShortCut(Key + 'BPL', GetExistingPath([PathMyDocs, PathSharedDocs], RelDocPath));
+end;
+
+procedure TPathCompressor.AddOldDelphiShortCut(const Key, RelExePath, RelDocPath: string);
+begin
+  AddShortCut(Key, GetExistingPath(PathDelphi, RelExePath));
+  AddShortCut(Key + 'BPL', GetExistingPath(PathDelphi, RelDocPath));
 end;
 
 function TPathCompressor.Compress(const Value: string): string;
@@ -82,7 +132,7 @@ begin
 
   if L > 0 then begin
     result := Value.Remove(0, L).Insert(0, '%' + Shortcuts.Names[N] + '%');
-    Variables.Add(Shortcuts[N]);
+    Variables.Append(Shortcuts[N]);
   end
   else begin
     result := Value;
@@ -101,37 +151,49 @@ begin
   NewLength := StorePath;
 end;
 
+function TPathCompressor.GetExistingPath(const Prefix: array of string; const
+    RelPath: string): string;
+var
+  S: string;
+begin
+  for S in Prefix do begin
+    Result := S + RelPath;
+    if TDirectory.Exists(Result) then Exit;
+  end;
+  Result := '';
+end;
+
+function TPathCompressor.GetExistingPath(const Prefix, RelPath: string): string;
+begin
+  Result := GetExistingPath([Prefix], RelPath);
+end;
+
 procedure TPathCompressor.InitShortCuts;
 begin
-  { TODO : Adapt to current operating system }
-  { Common Pathes under Windows 7/8 (x64) }
-  Shortcuts.Values['PF'] := 'C:\Program Files';
-  Shortcuts.Values['PF86'] := 'C:\Program Files (x86)';
-  Shortcuts.Values['DOCS'] := 'C:\Users\Public\Documents';
-  Shortcuts.Values['SQL'] := 'C:\Program Files\Microsoft SQL Server';
-  Shortcuts.Values['SQL86'] := 'C:\Program Files (x86)\Microsoft SQL Server';
-  Shortcuts.Values['D7'] := 'C:\Program Files (x86)\Borland\Delphi7';
-  Shortcuts.Values['BPL7'] := 'C:\Program Files (x86)\Borland\Delphi7\Projects\Bpl';
-  Shortcuts.Values['D2007'] := 'C:\Program Files (x86)\CodeGear\RAD Studio\5.0';
-  Shortcuts.Values['BPL2007'] := 'C:\Users\Public\Documents\RAD Studio\5.0\Bpl';
-  Shortcuts.Values['D2009'] := 'C:\Program Files (x86)\CodeGear\RAD Studio\6.0';
-  Shortcuts.Values['BPL2009'] := 'C:\Users\Public\Documents\RAD Studio\6.0\Bpl';
-  Shortcuts.Values['D2010'] := 'C:\Program Files (x86)\Embarcadero\RAD Studio\7.0';
-  Shortcuts.Values['BPL2010'] := 'C:\Users\Public\Documents\RAD Studio\7.0\Bpl';
-  Shortcuts.Values['XE'] := 'C:\Program Files (x86)\Embarcadero\RAD Studio\8.0';
-  Shortcuts.Values['BPLXE'] := 'C:\Users\Public\Documents\RAD Studio\8.0\Bpl';
-  Shortcuts.Values['XE2'] := 'C:\Program Files (x86)\Embarcadero\RAD Studio\9.0';
-  Shortcuts.Values['BPLXE2'] := 'C:\Users\Public\Documents\RAD Studio\9.0\Bpl';
-  Shortcuts.Values['XE3'] := 'C:\Program Files (x86)\Embarcadero\RAD Studio\10.0';
-  Shortcuts.Values['BPLXE3'] := 'C:\Users\Public\Documents\RAD Studio\10.0\Bpl';
-  Shortcuts.Values['XE4'] := 'C:\Program Files (x86)\Embarcadero\RAD Studio\11.0';
-  Shortcuts.Values['BPLXE4'] := 'C:\Users\Public\Documents\RAD Studio\11.0\Bpl';
-  Shortcuts.Values['XE5'] := 'C:\Program Files (x86)\Embarcadero\RAD Studio\12.0';
-  Shortcuts.Values['BPLXE5'] := 'C:\Users\Public\Documents\RAD Studio\12.0\Bpl';
-  Shortcuts.Values['XE6'] := 'C:\Program Files (x86)\Embarcadero\Studio\14.0';
-  Shortcuts.Values['BPLXE6'] := 'C:\Users\Public\Documents\Embarcadero\Studio\14.0\Bpl';
-  Shortcuts.Values['XE7'] := 'C:\Program Files (x86)\Embarcadero\Studio\15.0';
-  Shortcuts.Values['BPLXE7'] := 'C:\Users\Public\Documents\Embarcadero\Studio\15.0\Bpl';
+  { Allgemeine Programmpfade }
+  AddShortCut('PF', PathProgramFiles);
+  AddShortCut('PF86', PathProgramFilesX86);
+
+  { SQL Server }
+  AddShortCut('SQL', GetExistingPath(PathProgramFiles, '\Microsoft SQL Server'));
+  AddShortCut('SQL86', GetExistingPath(PathProgramFilesX86, '\Microsoft SQL Server'));
+
+  { TODO : Pfade für fehlende Delphi-Versionen ergänzen}
+
+  { Delphi 7 }
+  AddOldDelphiShortCut('D7', '\Borland\Delphi7', '\Borland\Delphi7\Projects\Bpl');
+
+  { Delphi ab D2007 }
+  AddDelphiShortCut('D2007', '\CodeGear\RAD Studio\5.0', '\RAD Studio\5.0\Bpl');
+  AddDelphiShortCut('D2009', '\CodeGear\RAD Studio\6.0', '\RAD Studio\6.0\Bpl');
+  AddDelphiShortCut('D2010', '\Embarcadero\RAD Studio\7.0', '\RAD Studio\7.0\Bpl');
+  AddDelphiShortCut('XE', '\Embarcadero\RAD Studio\8.0', '\RAD Studio\8.0\Bpl');
+  AddDelphiShortCut('XE2', '\Embarcadero\RAD Studio\9.0', '\RAD Studio\9.0\Bpl');
+  AddDelphiShortCut('XE3', '\Embarcadero\RAD Studio\10.0', '\RAD Studio\10.0\Bpl');
+  AddDelphiShortCut('XE4', '\Embarcadero\RAD Studio\11.0', '\RAD Studio\11.0\Bpl');
+  AddDelphiShortCut('XE5', '\Embarcadero\RAD Studio\12.0', '\RAD Studio\12.0\Bpl');
+  AddDelphiShortCut('XE6', '\Embarcadero\Studio\14.0', '\Embarcadero\Studio\14.0\Bpl');
+  AddDelphiShortCut('XE7', '\Embarcadero\Studio\15.0', '\Embarcadero\Studio\15.0\Bpl');
 end;
 
 function TPathCompressor.LoadPath(UserEnvironment: Boolean): Boolean;
@@ -159,16 +221,24 @@ begin
   end;
 end;
 
+procedure TPathCompressor.LoadShortCuts(const AFileName: string);
+begin
+  Shortcuts.LoadFromFile(AFileName);
+end;
+
+procedure TPathCompressor.StoreShortCuts(const AFileName: string);
+begin
+  Shortcuts.SaveToFile(AFileName);
+end;
+
 procedure TPathCompressor.NotifyChanges;
 { Sending a WM_SETTINGCHANGE message to all top level windows. Otherwise the new environment variables
   will only be visible after logoff/logon. }
-var
-  env: PChar;
-  lparam: NativeInt;
 begin
-  env := 'Environment';
-  lparam := NativeInt(env);
-  SendMessageTimeout(HWND_BROADCAST, WM_SETTINGCHANGE, 0, lParam, SMTO_ABORTIFHUNG, 5000, nil);
+  {$IFDEF DEBUG}
+  Exit;
+  {$ENDIF}
+  SendMessageTimeout(HWND_BROADCAST, WM_SETTINGCHANGE, 0, NativeInt(PChar('Environment')), SMTO_ABORTIFHUNG, 5000, nil);
 end;
 
 function TPathCompressor.ReadRegistry(const AName: string): string;
@@ -212,9 +282,13 @@ var
   instance: TPathCompressor;
   lNew: Integer;
   lOld: Integer;
+  shortCutFileName: string;
 begin
   instance := TPathCompressor.Create;
   try
+    if FindCmdLineSwitch('f', shortCutFileName) then begin
+      instance.LoadShortCuts(shortCutFileName);
+    end;
     Write('HKEY_LOCAL_MACHINE: ');
     if instance.LoadPath(false) then begin
       instance.Execute(lOld, lNew);

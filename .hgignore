@@ -2,3 +2,4 @@ syntax: glob
 source/__history
 *.local
 *.identcache
+source/Win32
