@@ -233,6 +233,7 @@ begin
   AddDelphiShortCut('DX3', '\Embarcadero\Studio\20.0', '\Embarcadero\Studio\20.0\Bpl');
   AddDelphiShortCut('DX4', '\Embarcadero\Studio\21.0', '\Embarcadero\Studio\21.0\Bpl');
   AddDelphiShortCut('D11', '\Embarcadero\Studio\22.0', '\Embarcadero\Studio\22.0\Bpl');
+  AddDelphiShortCut('D12', '\Embarcadero\Studio\23.0', '\Embarcadero\Studio\23.0\Bpl');
 end;
 
 function TPathCompressor.LoadPath(UserEnvironment: Boolean): Boolean;
