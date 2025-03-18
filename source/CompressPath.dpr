@@ -210,6 +210,9 @@ begin
   AddShortCut('SQL', GetExistingPath(PathProgramFiles, '\Microsoft SQL Server'));
   AddShortCut('SQL86', GetExistingPath(PathProgramFilesX86, '\Microsoft SQL Server'));
 
+  { Combit }
+  AddShortCut( 'combit', GetExistingPath( PathProgramFilesX86, '\combit'));
+
   { TODO : Add folders for missing Delphi versions}
 
   { Delphi 7 }
