@@ -210,6 +210,9 @@ begin
   AddShortCut('SQL', GetExistingPath(PathProgramFiles, '\Microsoft SQL Server'));
   AddShortCut('SQL86', GetExistingPath(PathProgramFilesX86, '\Microsoft SQL Server'));
 
+  { DevExpress }
+  AddShortCut( 'DXVCL', GetExistingPath( PathProgramFilesX86, '\DevExpress\VCL'));
+
   { TODO : Add folders for missing Delphi versions}
 
   { Delphi 7 }
