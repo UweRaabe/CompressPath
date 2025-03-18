@@ -37,7 +37,9 @@ type
     procedure RemoveDuplicates;
     function StorePath: Integer;
     procedure StoreVariables;
-    procedure WriteRegistry(const Name, Value: string);
+    procedure WriteRegistry( const xName,
+                                   xValue: string;
+                             const xIsVariable: Boolean);
     property OrgLength: Integer read FOrgLength;
     property Path: TStringList read FPath;
     property PathDelphi: string read FPathDelphi;
@@ -202,6 +204,20 @@ end;
 
 procedure TPathCompressor.InitShortCuts;
 begin
+  (*
+    %SYSTEMROOT% wird durch "C:\Windows" ersetzt
+      -> nicht machen, rückgängig
+
+    USERPROFILE wird unter den Benutzer-Variablen hinzugefügt
+      -> Nicht machen, löschen
+
+    Windows Umgebungs-Variablen dann nicht mehr mit "neuem" Editor sondern Textzeile?
+  *)
+  AddShortCut('SystemRoot', GetEnvironmentVariable( 'SYSTEMROOT'));
+
+  { User Profile }
+  AddShortCut('USERPROFILE', GetEnvironmentVariable( 'USERPROFILE'));
+
   { Program Files }
   AddShortCut('PF', PathProgramFiles);
   AddShortCut('PF86', PathProgramFilesX86);
@@ -320,32 +336,81 @@ var
   S: string;
 begin
   S := Path.DelimitedText;
-  WriteRegistry('Path', S);
+  WriteRegistry( 'Path',
+                 S,
+                 False);
   result := S.Length;
 end;
 
 procedure TPathCompressor.StoreVariables;
 var
   I: Integer;
+  lVariable: String;
 begin
   Variables.Sort;
-  for I := 0 to Variables.Count - 1 do begin
-    WriteRegistry(Variables.Names[I], Variables.ValueFromIndex[I]);
+
+  for I := 0 to Variables.Count - 1 do
+  begin
+    lVariable := Variables.Names[ I].Trim.ToUpper;
+
+    //*** skip Windows default
+    if not ( lVariable.Equals( 'SYSTEMROOT') or
+             lVariable.Equals( 'USERPROFILE')) then
+    begin
+      WriteRegistry( Variables.Names[ I],
+                     Variables.ValueFromIndex[ I],
+                     True);
+    end;
   end;
 end;
 
-procedure TPathCompressor.WriteRegistry(const Name, Value: string);
+procedure TPathCompressor.WriteRegistry( const xName,
+                                               xValue: string;
+                                         const xIsVariable: Boolean);
+var
+  lExistingPath: String;
 begin
-  {$IFDEF DEBUG}
-  { In DEBUG mode only show the changes that would be made to the registry.
-  }
-  Writeln(Name, '=', Value);
-  Exit;
-  {$ENDIF}
-  if Value.Contains('%') then
-    Registry.WriteExpandString(Name, Value)
+  if not xIsVariable or
+     not Registry.ValueExists( xName) then
+  begin
+    {$IFDEF DEBUG}
+    { In DEBUG mode only show the changes that would be made to the registry.
+    }
+    Writeln( xName,
+             '=',
+             xValue);
+    Exit;
+    {$ENDIF}
+
+    if xValue.Contains('%') then
+    begin
+      Registry.WriteExpandString( xName,
+                                  xValue);
+    end
+    else
+    begin
+      Registry.WriteString( xName,
+                            xValue);
+    end;
+  end
   else
-    Registry.WriteString(Name, Value);
+  begin
+    lExistingPath := Registry.ReadString( xName);
+
+    if ( Trim( lExistingPath) <> ( xValue)) then
+    begin
+      Writeln( Format( 'Key "%s" already exists with different Path ->',
+                       [ xName]));
+      Writeln( 'Value:'  .PadRight( 10).PadLeft( 12) +
+               '"' +
+               lExistingPath +
+               '"');
+      Writeln( 'Default:'.PadRight( 10).PadLeft( 12) +
+               '"' +
+               xValue +
+               '"');
+    end;
+  end;
 end;
 
 procedure ShowHelp;
