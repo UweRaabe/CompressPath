@@ -204,6 +204,20 @@ end;
 
 procedure TPathCompressor.InitShortCuts;
 begin
+  (*
+    %SYSTEMROOT% wird durch "C:\Windows" ersetzt
+      -> nicht machen, rückgängig
+
+    USERPROFILE wird unter den Benutzer-Variablen hinzugefügt
+      -> Nicht machen, löschen
+
+    Windows Umgebungs-Variablen dann nicht mehr mit "neuem" Editor sondern Textzeile?
+  *)
+  AddShortCut('SystemRoot', GetEnvironmentVariable( 'SYSTEMROOT'));
+
+  { User Profile }
+  AddShortCut('USERPROFILE', GetEnvironmentVariable( 'USERPROFILE'));
+
   { Program Files }
   AddShortCut('PF', PathProgramFiles);
   AddShortCut('PF86', PathProgramFilesX86);
@@ -331,14 +345,22 @@ end;
 procedure TPathCompressor.StoreVariables;
 var
   I: Integer;
+  lVariable: String;
 begin
   Variables.Sort;
 
   for I := 0 to Variables.Count - 1 do
   begin
-    WriteRegistry( Variables.Names[ I],
-                   Variables.ValueFromIndex[ I],
-                   True);
+    lVariable := Variables.Names[ I].Trim.ToUpper;
+
+    //*** skip Windows default
+    if not ( lVariable.Equals( 'SYSTEMROOT') or
+             lVariable.Equals( 'USERPROFILE')) then
+    begin
+      WriteRegistry( Variables.Names[ I],
+                     Variables.ValueFromIndex[ I],
+                     True);
+    end;
   end;
 end;
 
